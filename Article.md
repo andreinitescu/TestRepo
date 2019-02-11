@@ -4,6 +4,7 @@ It gives me great pleasure to share with you about some of my favorite topics in
 
 SkiaSharp is a .NET open-source wrapper library of the Skia graphics engine, and in combination with Xamarin.Forms, which is a great cross-platform open-source mobile app development framework, you can give your mobile apps a new life.
 
+
 ##  Skia, the star performer
 
 **Skia** is a high performance and open-source 2D graphics engine written in C++. It's owned and backed by Google and as a proof of its solid performance, it's been used in several mainstream products, such as Google Chrome, Chrome OS, Android or Mozilla FireFox, just to name a few. The Skia repository can be find here: [https://github.com/google/skia](https://github.com/google/skia)
@@ -21,7 +22,7 @@ On non-Windows platforms, SkiaSharp runs on top of Xamarin and, as with any .NET
 
 ### SkiaSharp canvas view
 
-In order to actually see on the screen what you draw with SkiaSharp API, SkiaSharp provides a canvas control on every platform it supports. This is done by SkiaSharp.Views, an extension library sitting on top of SkiaSharp: [https://www.nuget.org/packages/SkiaSharp.Views.Forms](https://www.nuget.org/packages/SkiaSharp.Views.Forms). 
+In order to actually see on the screen what you draw with SkiaSharp API, SkiaSharp provides a canvas control on every platform it supports. This is done by SkiaSharp.Views, an extension library sitting on top of SkiaSharp: [https://www.nuget.org/packages/SkiaSharp.Views](https://www.nuget.org/packages/SkiaSharp.Views). 
 
 Here are few examples of the canvas native control which SkiaSharp provides on some platforms:
 
@@ -71,13 +72,13 @@ Under the hood, the Xamarin.Forms renderers for `SKCanvasView`  use the same nat
 
 ### Drawing on the SkiaSharp canvas view
 
-As you can see above, on all platforms, the `SkiCanvasView` has a `PaintSurface` event.  It fires the event when canvas needs to be painted, either because the view was resized or because you called `InvalidateSurface()` method on it:
+As you can see above, on all platforms, the `SkCanvasView` has a `PaintSurface` event.  It fires the event when the canvas needs to be painted, either because the view was resized or because you called `InvalidateSurface()` method on it:
 
 ```
 _skCanvasView.InvalidateSurface();
 ```
 
-On the event handler, you get an instance of `SkiCanvas` which you can use to draw with the SkiaSharp API:
+On the event handler, you get an instance of `SkCanvas` which you can use to draw with the SkiaSharp API:
 
 ```csharp
 ...
@@ -195,8 +196,7 @@ When an element receives focus, I make visible only the part of the `SkPath` whi
  This is accomplished by creating a dash path effect (`SkPathEffect`) and paint with it the `SkPath`:
 
 ```csharp
-paint.PathEffect = SKPathEffect.CreateDash(intervals: strokeDash.Interval, phase: strokeDash.Phase);
-
+_skPaint.PathEffect = SKPathEffect.CreateDash(strokeDash.Intervals, strokeDash.Phase);
 skCanvas.DrawPath(skPath, paint);
 ```
 As you can see, the `CreatesDash` API  takes an **interval array** and a **phase**. 
@@ -215,42 +215,29 @@ To highlight the first `Entry` for example, the "on" interval is the width of th
 
 There's more to know about how the stroke width and cap influence the path which you can read about in the excellent Xamarin documentation for Skia.Sharp [here](https://docs.microsoft.com/en-us/xamarin/xamarin-forms/user-interface/graphics/skiasharp/paths/dots).
 
-As part of creating the path for the highlight, beside building the actual `SkPath`, I also build an array of "frames" representing the dash path intervals corresponding to highlight of the `Entry` and `Button` elements:
+As part of creating the path for the highlight, beside building the actual `SkPath`, I also build an array of dashes representing the dash path intervals corresponding to highlighting every  `Entry` and `Button` elements:
 
 ![Dash frames](dash_frames.png)
 
 ```csharp
 class HighlightPath
 {
-    public SKPath Path { get; }
-    public IList<StrokeDashFrame> StrokeDashFrameList { get; }
-
-    public HighlightPath(SKPath path, IList<StrokeDashFrame> strokeDashFrameList)
-    {
-        Path = path;
-        StrokeDashFrameList = strokeDashFrameList;
-    }
+    readonly Dictionary<int, StrokeDash> _strokeDashList = new Dictionary<int, StrokeDash>();
+    ...
 }
 
-class StrokeDashFrame
+class StrokeDash
 {
-    public int Key { get; }
-    public float[] Intervals { get; }
-    public float Phase { get; }
-
-    public StrokeDashFrame(int key, float[] intervals, float phase)
-    {
-        Key = key;
-        Intervals = intervals;
-        Phase = phase;
-    }
+    public float[] Intervals { get; set; }
+    public float Phase { get; set; }
+    ...
 }
 ```
-I'm using `Key` to know how get the frame based on the focused element. Username element has key 0, password element has key 1, and so on.
+I'm using the position of the element on the form layout as a key to know how get the dash based on the focused element. 
 
-In my form, I have three `Entry` elements and one the `Button`. The dash frame list will contain 4 entries representing the dash patern which makes the path visible when every element has focus. Here is a screenshot with the dash values from debugger:
+In my form, I have three `Entry` elements and one  `Button`. The dash list will contain 4 entries representing the dash values which makes the path visible when every element has focus. Here is a screenshot with the dash values from debugger:
 
-![Dash frame list](dash_frame_list.png)
+![Dash list](dash_frame_list.png)
 
 
 ### Animating the highlight between elements
@@ -258,6 +245,37 @@ In my form, I have three `Entry` elements and one the `Button`. The dash frame l
 In order to make the highlight appear like it's moving between the form elements, I animate the dash values (intervals and phase), from current dash values to the precalculated dash values corresponding to the element which must show highlight.
 
 I started with creating my own `StrokeDashAnimation` class which encapsulates animating the stroke dash `intervals` and `phase` values:
+
+```csharp
+class StrokeDashAnimation
+{
+    StrokeDash _currStrokeDash;
+
+    public StrokeDash From { get; }
+    public StrokeDash To { get; }
+    public TimeSpan Duration { get; }
+    public Easing Easing { get; }
+
+    public StrokeDashAnimation(StrokeDash from, StrokeDash to, TimeSpan duration)
+    {
+        From = from;
+        To = to;
+        Duration = duration;
+    }
+   ...
+}
+```
+I'm using `StrokeDash` class to encapsulate current dash value, which has the intervals and phase properties updated separately by every animation.
+
+If you haven't worked with animations in Xamarin.Forms, the framework has a very simple but very powerful support for creating animations based on animating a `double` value. 
+
+The way the `Animation` works is very simple: you give it a start `double` value, a `double` end value and an easing type. `Animation` uses easing to compute the interpolated value between the start and the end values. Once started using the `Commit` method, an `Animation` instance will call your callback for every computed value, starting with the given start value until end value is reached.
+
+`Animation` can hold other `Animation` instances and when you start the parent animation it starts its child animations. 
+
+You can read more about Xamarin.Forms animation and its capabilities here: [https://docs.microsoft.com/en-us/xamarin/xamarin-forms/user-interface/animation/](https://docs.microsoft.com/en-us/xamarin/xamarin-forms/user-interface/animation/)
+
+In my implementation, I create an animation holding three inner animations for every stroke dash property: interval "on", interval "off" and phase:
 
 ```csharp
 class StrokeDashAnimation
@@ -307,45 +325,47 @@ class StrokeDashAnimation
     }
 }
 ```
-If you haven't worked with animations in Xamarin.Forms, the framework has a very simple but very powerful support for creating animations based on animating a `double` value. 
+When the focus changes to an `Entry` or `Button` is clicked, I start the animation by animating from the current dash values to the precalculated dash values:
 
-The way the `Animation` works is very simple: you give it a start `double` value, a `double` end value and an easing type. `Animation` uses easing to compute the interpolated value between the start and the end values. Once started using the `Commit` method, an `Animation` instance will call your callback for every computed value, starting with the given start value until end value is reached.
-
-`Animation` can hold other `Animation` instances and when you start the parent animation it starts its child animations. 
-
-You can read more about Xamarin.Forms animation and its capabilities here: [https://docs.microsoft.com/en-us/xamarin/xamarin-forms/user-interface/animation/](https://docs.microsoft.com/en-us/xamarin/xamarin-forms/user-interface/animation/)
-
-In my implementation, I create an animation holding three inner animations for every stroke dash property: interval "on", interval "off" and phase. When the focus changes to an `Entry` or `Button` is clicked, I start the animation by animating from the current dash values to the precalculated dash values:
 ```csharp
-var frameTo = _highlightPath.StrokeDashFrameList.First(sd => sd.Key == _iCurrFocusedView);
-
-var anim = new StrokeDashAnimation(
-    from: _currStrokeDash,
-    to: new StrokeDash(frameTo.Intervals, frameTo.Phase),
-    duration: _highlightSettings.AnimationDuration);
-
-anim.Start((strokeDash) =>
+void DrawDash(SKCanvasView skCanvasView, StrokeDash fromDash, StrokeDash toDash)
 {
-    _currStrokeDash = strokeDash;
-    _skCanvasView.InvalidateSurface();
-});
+    if (fromDash != null)
+    {
+        var anim = new StrokeDashAnimation(
+            from: fromDash,
+            to: toDash,
+            duration: _highlightSettings.AnimationDuration);
+
+        anim.Start((strokeDashToDraw) => RequestDraw(skCanvasView, strokeDashToDraw));
+    }
+    else
+        RequestDraw(skCanvasView, toDash);
+}
+
+void RequestDraw(SKCanvasView skCanvasView, StrokeDash strokeDashToDraw)
+{
+    _highlightState.StrokeDash = strokeDashToDraw;
+    skCanvasView.InvalidateSurface();
+}
 ```
-
-For every new computed stroke dash value, I validate the `SkCanvasView` surface in order to make it fire its `PaintSurface` event. On the paint event handler, I draw the path with the new dash value: 
+For every new computed stroke dash value, I invalidate the `SkCanvasView` surface in order to make it fire its `PaintSurface` event. On the paint event handler, I draw the path with the new dash values kept by `_highlightState.StrokeDash`: 
 
 ```csharp
-void SkCanvasViewRequiredPainting(object sender, SKPaintSurfaceEventArgs e)
+public void Draw(SKCanvasView skCanvasView, SKCanvas skCanvas)
 {
-    SKSurface skSurface = e.Surface;
-    SKCanvas skCanvas = skSurface.Canvas;
     skCanvas.Clear();
 
-    if (_highlightSettings == null || _currStrokeDash == null)
+    if (_highlightState == null)
         return;
 
+    if (_skPaint == null)
+        _skPaint = CreateHighlightSkPaint(skCanvasView, _highlightSettings, _highlightState.HighlightPath);
+
+    StrokeDash strokeDash = _highlightState.StrokeDash;
     // Comment the next line to see whole path without dash effect
-    _skPaint.PathEffect = SKPathEffect.CreateDash(intervals: _currStrokeDash.Interval, phase: _currStrokeDash.Phase);
-    skCanvas.DrawPath(_highlightPath.Path, _skPaint);
+    _skPaint.PathEffect = SKPathEffect.CreateDash(strokeDash.Intervals, strokeDash.Phase);
+    skCanvas.DrawPath(_highlightState.HighlightPath.Path, _skPaint);
 }
 ```
 
